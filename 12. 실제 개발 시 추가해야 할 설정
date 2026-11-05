@@ -1,0 +1,23 @@
+12-1. .gitignore 설정
+업로드 사진과 API 키가 GitHub에 무분별하게 올라가지 않도록 설정
+
+node_modules/
+.env
+uploads/
+
+사진을 장기간 보관할 계획이라면 업로드 폴더는 별도 백업 정책을 마련
+
+12-2. AI 분석 실패 시 처리
+현재 코드는 사진 정보를 먼저 DB에 저장한 다음 AI 분석 진행
+따라서 AI API 연결에 실패하더라도 사진 원본과 사진 정보는 남을 수 있음(사진을 다시 분석할 수 있음)
+
+실제 운영에서는 다음 상태를 별도로 관리
+- PENDING: 분석 대기
+- SUCCESS: 분석 완료
+- FAILED: 분석 실패
+
+이를 위해 추후 plant_images에 analysis_status 컬럼을 추가하는 것을 권장
+
+ALTER TABLE plant_images
+ADD COLUMN analysis_status
+VARCHAR(20) NOT NULL DEFAULT 'PENDING';
