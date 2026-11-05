@@ -1,0 +1,38 @@
+실제 카메라가 없어도 사진 파일을 직접 선택하여 테스트 가능
+
+먼저 서버를 실행
+node server.js
+
+Postman을 실행하고 다음과 같이 설정합니다.
+POST
+**http://localhost:3000/api/images/upload**
+
+Body → form-data
+KEY	TYPE	VALUE
+plant_id	Text	1
+image_source	Text	MANUAL
+image	File	방울토마토 사진 선택
+
+정상 처리 시 예상 응답
+
+
+{
+  "success": true,
+  "message": "사진 업로드 및 AI 분석이 완료되었습니다.",
+  "image_id": 1,
+  "analysis_id": 1,
+  "image_path": "uploads/images/example.jpg",
+  "analysis": {
+    "leaf_status": "HEALTHY",
+    "fruit_maturity": "TURNING",
+    "abnormal_detected": false,
+    "abnormal_description": null,
+    "growth_metrics": {
+      "estimated_fruit_count": 5,
+      "estimated_average_fruit_size_mm": null,
+      "growth_observation": "열매가 붉게 익어가는 단계로 관찰됩니다."
+    },
+    "confidence": 0.91
+  }
+}
+  
