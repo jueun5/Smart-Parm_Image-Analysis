@@ -1,0 +1,37 @@
+사진 정보 조회:
+
+SELECT *
+FROM plant_images
+ORDER BY image_id DESC;
+
+AI 분석 결과 조회:
+
+SELECT *
+FROM ai_analysis
+ORDER BY analysis_id DESC;
+
+사진과 AI 분석 결과를 한 번에 확인:
+
+SELECT
+    p.plant_name,
+    i.image_id,
+    i.image_path,
+    i.image_source,
+    i.captured_at,
+    a.leaf_status,
+    a.fruit_maturity,
+    a.abnormal_detected,
+    a.abnormal_description,
+    a.growth_metrics,
+    a.confidence,
+    a.analyzed_at
+
+FROM plant_images i
+
+JOIN plants p
+    ON i.plant_id = p.plant_id
+
+LEFT JOIN ai_analysis a
+    ON i.image_id = a.image_id
+
+ORDER BY i.captured_at DESC;
