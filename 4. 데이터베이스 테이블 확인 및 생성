@@ -1,0 +1,41 @@
+이번 모듈은 기존 DB 설계의 다음 두 테이블을 사용
+- plant_images: 업로드된 사진 정보
+- ai_analysis: AI 분석 결과
+아직 테이블을 만들지 않았다면 다음 SQL을 실행
+
+
+USE smartfarm_db;
+
+-- 사진 정보 테이블
+CREATE TABLE IF NOT EXISTS plant_images (
+    image_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    plant_id INT NOT NULL,
+    image_path VARCHAR(500) NOT NULL,
+    image_source VARCHAR(20) NOT NULL,
+    captured_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (plant_id)
+        REFERENCES plants(plant_id),
+
+    INDEX idx_image_time (plant_id, captured_at)
+);
+
+-- AI 분석 결과 테이블
+CREATE TABLE IF NOT EXISTS ai_analysis (
+    analysis_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    image_id BIGINT NOT NULL,
+    leaf_status VARCHAR(30),
+    fruit_maturity VARCHAR(30),
+    abnormal_detected BOOLEAN NOT NULL DEFAULT FALSE,
+    abnormal_description TEXT,
+    growth_metrics JSON,
+    confidence DECIMAL(5,4),
+    model_version VARCHAR(50),
+    analyzed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (image_id)
+        REFERENCES plant_images(image_id),
+
+    INDEX idx_analysis_time (image_id, analyzed_at)
+);
