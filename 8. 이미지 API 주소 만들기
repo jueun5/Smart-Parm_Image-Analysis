@@ -1,0 +1,42 @@
+파일 위치: routes/image.js
+
+
+const express = require('express');
+const router = express.Router();
+
+const imageController = require('../controllers/imageController');
+
+// 사진 업로드 및 AI 분석
+router.post(
+    '/upload',
+    imageController.uploadMiddleware,
+    imageController.uploadAndAnalyze
+);
+
+// 재배 대상별 분석 이력 조회
+router.get(
+    '/history/:plant_id',
+    imageController.getAnalysisHistory
+);
+
+// 업로드 과정에서 발생한 파일 오류 처리
+router.use((err, req, res, next) => {
+
+    console.error('이미지 업로드 오류:', err);
+
+    if (err instanceof require('multer').MulterError) {
+        return res.status(400).json({
+            success: false,
+            message: err.code === 'LIMIT_FILE_SIZE'
+                ? '이미지 용량은 10MB 이하로 업로드해 주세요.'
+                : '이미지 업로드에 실패했습니다.'
+        });
+    }
+
+    res.status(400).json({
+        success: false,
+        message: err.message || '이미지 업로드 오류입니다.'
+    });
+});
+
+module.exports = router;
