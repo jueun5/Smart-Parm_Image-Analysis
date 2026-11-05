@@ -1,0 +1,34 @@
+기존 server.js에 이미지 라우터를 추가
+
+
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+
+require('dotenv').config();
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+// 센서 API
+const sensorRouter = require('./routes/sensor');
+app.use('/api/sensor', sensorRouter);
+
+// 이미지 API
+const imageRouter = require('./routes/image');
+app.use('/api/images', imageRouter);
+
+// 업로드된 이미지 조회
+app.use(
+    '/uploads',
+    express.static(path.join(__dirname, 'uploads'))
+);
+
+// 서버 실행
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+    console.log(`스마트팜 서버 실행: http://localhost:${PORT}`);
+});
