@@ -1,0 +1,306 @@
+파일 위치: controllers/imageController.js
+
+사진을 업로드하고, AI 분석을 실행한 다음 결과를 DB에 저장하는 핵심 기능
+
+
+const db = require('../config/db');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+const { analyzePlantImage } = require('../services/aiService');
+
+// 이미지 저장 폴더 생성
+const uploadDir = path.join(
+    __dirname,
+    '../uploads/images'
+);
+
+fs.mkdirSync(uploadDir, { recursive: true });
+
+// 파일 저장 방식
+const storage = multer.diskStorage({
+
+    destination: (req, file, cb) => {
+        cb(null, uploadDir);
+    },
+
+    filename: (req, file, cb) => {
+
+        const ext = path.extname(file.originalname)
+            .toLowerCase();
+
+        const filename =
+            `${Date.now()}-${require('crypto').randomUUID()}${ext}`;
+
+        cb(null, filename);
+    }
+});
+
+// 이미지 업로드 설정
+const upload = multer({
+
+    storage: storage,
+
+    limits: {
+        fileSize: 10 * 1024 * 1024
+    },
+
+    fileFilter: (req, file, cb) => {
+
+        const allowedTypes = [
+            'image/jpeg',
+            'image/png',
+            'image/webp'
+        ];
+
+        if (!allowedTypes.includes(file.mimetype)) {
+            return cb(
+                new Error('JPG, PNG, WEBP 이미지만 업로드 가능합니다.')
+            );
+        }
+
+        cb(null, true);
+    }
+});
+
+// 이미지 업로드 미들웨어
+exports.uploadMiddleware = upload.single('image');
+
+
+// 이미지 업로드 및 AI 분석
+exports.uploadAndAnalyze = async (req, res) => {
+
+    let connection;
+
+    try {
+
+        // 1. 이미지 파일 확인
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: '업로드할 이미지가 없습니다.'
+            });
+        }
+
+        const plantId = Number(req.body.plant_id);
+
+        const imageSource = req.body.image_source || 'MANUAL';
+
+        const capturedAt = req.body.captured_at || null;
+
+        if (!Number.isInteger(plantId) || plantId <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: '올바른 재배 대상 ID가 필요합니다.'
+            });
+        }
+
+        if (!['AUTO', 'MANUAL'].includes(imageSource)) {
+            return res.status(400).json({
+                success: false,
+                message: '사진 수집 방식이 올바르지 않습니다.'
+            });
+        }
+
+        // 2. 재배 대상 존재 여부 확인
+        const [plants] = await db.execute(
+            'SELECT plant_id FROM plants WHERE plant_id = ?',
+            [plantId]
+        );
+
+        if (plants.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: '등록되지 않은 재배 대상입니다.'
+            });
+        }
+
+        // 3. 이미지 경로 설정
+        const imagePath = `uploads/images/${req.file.filename}`;
+
+        // 4. 사진 정보를 DB에 저장
+        connection = await db.getConnection();
+
+        const imageSql = `
+            INSERT INTO plant_images (
+                plant_id,
+                image_path,
+                image_source,
+                captured_at
+            )
+            VALUES (?, ?, ?, COALESCE(?, NOW()))
+        `;
+
+        const [imageResult] = await connection.execute(
+            imageSql,
+            [
+                plantId,
+                imagePath,
+                imageSource,
+                capturedAt
+            ]
+        );
+
+        const imageId = imageResult.insertId;
+
+        // 5. AI 이미지 분석 실행
+        const analysis = await analyzePlantImage(
+            req.file.path
+        );
+
+        // 6. AI 분석 결과 검증
+        const validStatuses = [
+            'HEALTHY',
+            'ABNORMAL',
+            'UNKNOWN'
+        ];
+
+        const validMaturities = [
+            'GREEN',
+            'TURNING',
+            'RED',
+            'UNKNOWN'
+        ];
+
+        if (
+            !validStatuses.includes(analysis.leaf_status) ||
+            !validMaturities.includes(analysis.fruit_maturity) ||
+            typeof analysis.abnormal_detected !== 'boolean' ||
+            typeof analysis.confidence !== 'number' ||
+            !Number.isFinite(analysis.confidence) ||
+            analysis.confidence < 0 ||
+            analysis.confidence > 1 ||
+            !analysis.growth_metrics ||
+            typeof analysis.growth_metrics !== 'object' ||
+            Array.isArray(analysis.growth_metrics)
+        ) {
+            throw new Error('AI 분석 결과 형식이 올바르지 않습니다.');
+        }
+
+        // 7. AI 분석 결과 DB 저장
+        const analysisSql = `
+            INSERT INTO ai_analysis (
+                image_id,
+                leaf_status,
+                fruit_maturity,
+                abnormal_detected,
+                abnormal_description,
+                growth_metrics,
+                confidence,
+                model_version,
+                analyzed_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        `;
+
+        const [analysisResult] = await connection.execute(
+            analysisSql,
+            [
+                imageId,
+                analysis.leaf_status,
+                analysis.fruit_maturity,
+                analysis.abnormal_detected,
+                analysis.abnormal_description || null,
+                JSON.stringify(analysis.growth_metrics),
+                analysis.confidence,
+                process.env.OPENAI_MODEL || 'gpt-4o-mini'
+            ]
+        );
+
+        // 8. 결과 반환
+        res.status(201).json({
+
+            success: true,
+
+            message: '사진 업로드 및 AI 분석이 완료되었습니다.',
+
+            image_id: imageId,
+
+            analysis_id: analysisResult.insertId,
+
+            image_path: imagePath,
+
+            analysis: analysis
+
+        });
+
+    } catch (error) {
+
+        console.error('이미지 처리 오류:', error);
+
+        res.status(500).json({
+            success: false,
+            message: '이미지 업로드 또는 AI 분석 중 오류가 발생했습니다.'
+        });
+
+    } finally {
+
+        if (connection) {
+            connection.release();
+        }
+    }
+};
+
+
+// 특정 재배 대상의 AI 분석 이력 조회
+exports.getAnalysisHistory = async (req, res) => {
+
+    try {
+
+        const plantId = Number(req.params.plant_id);
+
+        if (!Number.isInteger(plantId) || plantId <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: '올바른 재배 대상 ID가 필요합니다.'
+            });
+        }
+
+        const sql = `
+            SELECT
+                i.image_id,
+                i.image_path,
+                i.image_source,
+                i.captured_at,
+
+                a.analysis_id,
+                a.leaf_status,
+                a.fruit_maturity,
+                a.abnormal_detected,
+                a.abnormal_description,
+                a.growth_metrics,
+                a.confidence,
+                a.model_version,
+                a.analyzed_at
+
+            FROM plant_images i
+
+            LEFT JOIN ai_analysis a
+                ON i.image_id = a.image_id
+
+            WHERE i.plant_id = ?
+
+            ORDER BY i.captured_at DESC
+
+            LIMIT 100
+        `;
+
+        const [rows] = await db.execute(sql, [plantId]);
+
+        res.status(200).json({
+            success: true,
+            count: rows.length,
+            data: rows
+        });
+
+    } catch (error) {
+
+        console.error('분석 이력 조회 오류:', error);
+
+        res.status(500).json({
+            success: false,
+            message: '분석 이력 조회 중 오류가 발생했습니다.'
+        });
+    }
+};
