@@ -1,0 +1,40 @@
+방울토마토 사진을 업로드하면 AI가 생육 상태를 분석하고, 분석 결과를 MySQL에 자동 저장하는 이미지 분석 모듈
+
+1. 구현할 기능
+1)사진 업로드: 카메라 자동 촬영 또는 사용자 직접 업로드
+2)사진 저장: 서버의 이미지 저장 폴더에 원본 보관
+3)AI 이미지 분석: 잎 건강 상태, 열매 성숙도, 이상 징후 분석
+4)생육 정보 추출: 열매 크기, 개수 등 이미지에서 추정 가능한 정보 분석
+5)DB 저장: 사진 정보와 AI 분석 결과 저장
+6)분석 결과 조회: 특정 재배 대상의 과거 분석 결과 확인
+
+2. 프로젝트 폴더 구조
+smartfarm/
+│
+├── server.js
+│
+├── config/
+│   └── db.js
+│
+├── routes/
+│   ├── sensor.js
+│   └── image.js
+│
+├── controllers/
+│   ├── sensorController.js
+│   └── imageController.js
+│
+├── services/
+│   └── aiService.js
+│
+├── uploads/
+│   └── images/
+│
+├── .env
+├── .gitignore
+└── package.json
+
+routes/image.js	: 이미지 관련 API 주소 설정
+controllers/imageController.js : 사진 업로드 및 DB 저장
+services/aiService.js	: OpenAI AI 분석 처리
+uploads/images/	: 업로드된 원본 사진 저장
