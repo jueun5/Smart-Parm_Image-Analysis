@@ -1,0 +1,136 @@
+파일 위치: services/aiService.js
+
+이미지 파일을 AI에 전달하고 방울토마토의 생육 상태를 분석하는 역할
+
+AI에게 JSON 형식으로 분석 결과 반환 요청
+
+
+const OpenAI = require('openai');
+const fs = require('fs');
+
+const client = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+});
+
+const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
+// 이미지 MIME 타입 확인
+function getMimeType(filePath) {
+    const ext = filePath.split('.').pop().toLowerCase();
+
+    const types = {
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        png: 'image/png',
+        webp: 'image/webp'
+    };
+
+    return types[ext] || null;
+}
+
+// AI 이미지 분석
+exports.analyzePlantImage = async (imagePath) => {
+    try {
+        const mimeType = getMimeType(imagePath);
+
+        if (!mimeType) {
+            throw new Error('지원하지 않는 이미지 형식입니다.');
+        }
+
+        // 이미지 파일 읽기
+        const imageBuffer = fs.readFileSync(imagePath);
+
+        // Base64 변환
+        const base64Image = imageBuffer.toString('base64');
+
+        // AI에 전달할 이미지 URL
+        const imageUrl =
+            `data:${mimeType};base64,${base64Image}`;
+
+        // AI 분석 요청
+        const response = await client.chat.completions.create({
+            model: MODEL,
+
+            response_format: {
+                type: 'json_object'
+            },
+
+            messages: [
+                {
+                    role: 'system',
+                    content: `
+당신은 방울토마토 생육 상태를 분석하는 AI입니다.
+
+사진에 실제로 보이는 정보만 분석해야 합니다.
+사진만으로 확인할 수 없는 정보는 추측하지 말고 null로 반환합니다.
+
+다음 항목을 분석합니다.
+
+1. 잎 건강 상태
+2. 열매 성숙도
+3. 이상 징후
+4. 생육 상태 관련 측정 추정치
+
+분석 결과는 반드시 JSON으로 반환합니다.
+`
+                },
+                {
+                    role: 'user',
+
+                    content: [
+                        {
+                            type: 'text',
+
+                            text: `
+방울토마토 사진을 분석해 주세요.
+
+다음 JSON 구조를 지켜 주세요.
+
+{
+  "leaf_status": "HEALTHY 또는 ABNORMAL 또는 UNKNOWN",
+  "fruit_maturity": "GREEN 또는 TURNING 또는 RED 또는 UNKNOWN",
+  "abnormal_detected": false,
+  "abnormal_description": null,
+  "growth_metrics": {
+    "estimated_fruit_count": null,
+    "estimated_average_fruit_size_mm": null,
+    "growth_observation": null
+  },
+  "confidence": 0.0
+}
+
+주의사항:
+- 사진에 잎이 없으면 leaf_status는 UNKNOWN입니다.
+- 사진에 열매가 없으면 fruit_maturity는 UNKNOWN입니다.
+- 실제로 관찰되는 이상 징후만 기록합니다.
+- 사진에서 열매 개수나 크기를 판단하기 어렵다면 null을 반환합니다.
+- confidence는 전체 분석 결과의 주관적 신뢰도이며 0~1 사이의 숫자입니다.
+- 질병을 확진하지 말고 관찰된 특징을 설명합니다.
+`
+                        },
+                        {
+                            type: 'image_url',
+
+                            image_url: {
+                                url: imageUrl,
+                                detail: 'high'
+                            }
+                        }
+                    ]
+                }
+            ]
+        });
+
+        // AI 응답 JSON 변환
+        const result = JSON.parse(
+            response.choices[0].message.content
+        );
+
+        return result;
+
+    } catch (error) {
+        console.error('AI 이미지 분석 오류:', error);
+
+        throw error;
+    }
+};
